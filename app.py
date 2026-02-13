@@ -54,7 +54,23 @@ def load_my_model():
         with st.spinner("Téléchargement du modèle IA de Houbad Douaa (cela peut prendre un moment)..."):
             gdown.download(url, model_path, quiet=False)
     
-    return tf.keras.models.load_model(model_path)
+   @st.cache_resource
+def load_my_model():
+    model_path = 'brain_tumor_model_v1.h5'
+    file_id = '17S8069HGd_H31pxpMmlFh7eB9TzmTEyE'
+    url = f'https://drive.google.com/uc?id={file_id}'
+    
+    if not os.path.exists(model_path):
+        with st.spinner("Téléchargement du modèle IA de Houbad Douaa..."):
+            gdown.download(url, model_path, quiet=False)
+    
+    # --- AJOUT DE LA CORRECTION ICI ---
+    try:
+        # On essaie le chargement standard
+        return tf.keras.models.load_model(model_path, compile=False)
+    except Exception as e:
+        # Si ça échoue, on utilise le mode 'legacy' pour les anciens modèles H5
+        return tf.keras.models.load_model(model_path, custom_objects=None, compile=False)
 
 # --- 4. FONCTION PDF ---
 def generate_pdf(nom, age, diagnostic, confiance):
