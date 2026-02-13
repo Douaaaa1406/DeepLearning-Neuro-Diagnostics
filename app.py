@@ -11,11 +11,11 @@ import time
 # --- 1. CONFIGURATION DE LA PAGE ---
 st.set_page_config(page_title="NeuroScan AI | Houbad Douaa", page_icon="🧠", layout="wide")
 
-# --- 2. STYLE CSS AVANCÉ (Background MRI & Transparence) ---
+# --- 2. STYLE CSS (Background MRI & Transparence) ---
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] > .main {
-        background-image: url("https://www.publicdomainpictures.net/pictures/310000/velka/mri-brain-scan.jpg");
+        background-image: url("https://medicine.washu.edu/app/uploads/2021/02/GlioblastomaBranScans.jpg");
         background-size: cover;
         background-position: center;
         background-attachment: fixed;
@@ -24,134 +24,177 @@ st.markdown("""
         content: "";
         position: absolute;
         top: 0; left: 0; width: 100%; height: 100%;
-        background-color: rgba(255, 255, 255, 0.90); /* Voile blanc professionnel */
+        background-color: rgba(255, 255, 255, 0.88); 
         z-index: -1;
     }
-    .stTextInput, .stNumberInput, .stDateInput {
-        background-color: rgba(255, 255, 255, 0.7);
+    .main-title {
+        color: #1E3A5F;
+        font-size: 3.2em;
+        font-weight: 900;
+        text-align: left;
+        margin-bottom: 0;
+    }
+    .sub-title {
+        color: #4A90E2;
+        font-size: 1.5em;
+        font-weight: 300;
+        text-align: left;
+        margin-top: 0;
+    }
+    .stButton>button {
+        width: 100%;
+        border-radius: 5px;
+        height: 3em;
+        background-color: #1E3A5F;
+        color: white;
+        font-weight: bold;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. HORLOGE TEMPS RÉEL (Haut Droite) ---
-col_header_1, col_header_2 = st.columns([2, 1])
-with col_header_2:
+# --- 3. EN-TÊTE AVEC HORLOGE DYNAMIQUE ---
+col_h1, col_h2 = st.columns([2, 1])
+
+with col_h1:
+    st.markdown('<p class="main-title">HOUBAD DOUAA</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-title">Ingénierie Biomédicale & Data Science</p>', unsafe_allow_html=True)
+
+with col_h2:
+    # Affichage de l'heure et date (se rafraîchit à chaque action)
     now = datetime.datetime.now()
     st.markdown(f"""
-        <div style="text-align: right; color: #1E3A5F; font-weight: bold; padding: 10px; border: 1px solid #4A90E2; border-radius: 5px;">
-            📅 {now.strftime("%d/%m/%Y")}<br>
-            ⌚ {now.strftime("%H:%M:%S")}
+        <div style="text-align: right; border: 2px solid #1E3A5F; padding: 10px; border-radius: 10px; background-color: rgba(255,255,255,0.6);">
+            <span style="color: #1E3A5F; font-size: 1.2em; font-weight: bold;">📅 {now.strftime("%d/%m/%Y")}</span><br>
+            <span style="color: #4A90E2; font-size: 1.1em; font-weight: bold;">⌚ {now.strftime("%H:%M:%S")}</span>
         </div>
     """, unsafe_allow_html=True)
 
-# --- 4. SIGNATURE & TITRE ---
-with col_header_1:
-    st.markdown("""
-        <h1 style="color: #1E3A5F; margin-bottom: 0;">PLATEFORME NEUROSCAN AI</h1>
-        <h3 style="color: #4A90E2; font-weight: 300; margin-top: 0;">Ingénierie Biomédicale & Data Science | Houbad Douaa</h3>
-    """, unsafe_allow_html=True)
-
-# --- 5. CHARGEMENT DU MODÈLE (.keras) ---
+# --- 4. CHARGEMENT DU MODÈLE (CORRECTIF VALUERROR) ---
 @st.cache_resource
 def load_my_model():
     model_path = 'model.keras'
     file_id = '1yYvHXYlkA2NRK4HGD5ANNDW5__mDP-C0'
     url = f'https://drive.google.com/uc?id={file_id}'
+    
     if not os.path.exists(model_path):
-        with st.spinner("Initialisation des systèmes neuronaux..."):
+        with st.spinner("Initialisation du système expert..."):
             gdown.download(url, model_path, quiet=False)
-    return tf.keras.models.load_model(model_path)
+    
+    # L'argument compile=False est crucial pour éviter l'erreur de tensors sur Streamlit Cloud
+    return tf.keras.models.load_model(model_path, compile=False)
 
 model = load_my_model()
 
-# --- 6. INTERFACE UTILISATEUR (Formulaire Patient) ---
+# --- 5. FORMULAIRE PATIENT ---
 st.markdown("---")
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("📋 Informations Personnelles")
+    st.subheader("📋 Identification du Patient")
     nom = st.text_input("Nom")
     prenom = st.text_input("Prénom")
-    date_naiss = st.date_input("Date de Naissance", min_value=datetime.date(1920, 1, 1))
-    lieu_naiss = st.text_input("Lieu de Naissance")
+    date_n = st.date_input("Date de naissance", min_value=datetime.date(1920, 1, 1))
+    lieu_n = st.text_input("Lieu de naissance")
 
 with col2:
-    st.subheader("📸 Analyse d'Imagerie")
-    uploaded_file = st.file_uploader("Transférer l'IRM (JPG, PNG)", type=["jpg", "jpeg", "png"])
+    st.subheader("🔬 Acquisition Image")
+    file = st.file_uploader("Charger l'IRM cérébrale (Format JPG/PNG)", type=["jpg", "jpeg", "png"])
 
-# --- 7. LOGIQUE DE PRÉDICTION & PDF ---
-def create_pdf(nom, prenom, date_n, lieu_n, diag, conf, img_path):
+# --- 6. FONCTION GÉNÉRATION PDF ---
+def generate_medical_pdf(nom, prenom, date_n, lieu_n, result, confidence, img_path):
     pdf = FPDF()
     pdf.add_page()
-    # Header
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, "RAPPORT DE DIAGNOSTIC NEUROLOGIQUE (IA)", ln=True, align='C')
-    pdf.set_font("Arial", 'I', 10)
-    pdf.cell(200, 10, f"Généré par la plateforme de Houbad Douaa - {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align='C')
     
-    # Infos Patient
+    # En-tête professionnel
+    pdf.set_font("Arial", 'B', 16)
+    pdf.set_text_color(30, 58, 95)
+    pdf.cell(0, 10, "RAPPORT D'ANALYSE NEUROSCAN AI", ln=True, align='C')
+    
+    pdf.set_font("Arial", 'I', 10)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 10, f"Expertise : Houbad Douaa | Généré le : {datetime.datetime.now().strftime('%d/%m/%Y à %H:%M')}", ln=True, align='C')
+    
+    # Section Patient
     pdf.ln(10)
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "1. INFORMATIONS PERSONNELLES", ln=True)
-    pdf.set_font("Arial", '', 11)
-    pdf.cell(0, 8, f"Nom & Prénom : {nom.upper()} {prenom.capitalize()}", ln=True)
-    pdf.cell(0, 8, f"Né(e) le : {date_n} à {lieu_n}", ln=True)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(0, 10, "1. INFORMATIONS DU PATIENT", ln=True)
+    pdf.set_font("Arial", size=11)
+    pdf.cell(0, 8, f"Identité : {nom.upper()} {prenom.capitalize()}", ln=True)
+    pdf.cell(0, 8, f"Date de naissance : {date_n}", ln=True)
+    pdf.cell(0, 8, f"Lieu de naissance : {lieu_n}", ln=True)
     
-    # Image
+    # Insertion de l'image
     pdf.ln(5)
     pdf.image(img_path, x=60, w=90)
+    pdf.ln(5)
     
     # Résultats
-    pdf.ln(5)
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "2. RÉSULTATS DE L'ANALYSE PAR IA", ln=True)
+    pdf.cell(0, 10, "2. CONCLUSIONS DU SYSTÈME IA", ln=True)
     pdf.set_font("Arial", 'B', 14)
-    color = (200, 0, 0) if "Pas de tumeur" not in diag else (0, 128, 0)
-    pdf.set_text_color(*color)
-    pdf.cell(0, 10, f"DIAGNOSTIC : {diag.upper()}", ln=True)
+    # Couleur rouge si tumeur détectée
+    if "Pas de tumeur" in result:
+        pdf.set_text_color(34, 139, 34)
+    else:
+        pdf.set_text_color(200, 0, 0)
+        
+    pdf.cell(0, 10, f"DIAGNOSTIC : {result.upper()}", ln=True)
     pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", '', 11)
-    pdf.cell(0, 8, f"Indice de confiance du système : {conf:.2f}%", ln=True)
+    pdf.set_font("Arial", size=11)
+    pdf.cell(0, 8, f"Indice de confiance : {confidence:.2f}%", ln=True)
     
     return pdf.output(dest='S').encode('latin-1')
 
-if uploaded_file and model:
-    # Sauvegarde temporaire pour le PDF
-    with open("temp_img.png", "wb") as f:
-        f.write(uploaded_file.getbuffer())
+# --- 7. TRAITEMENT ET PRÉDICTION ---
+if file is not None and model is not None:
+    # Sauvegarde temporaire de l'image pour le PDF
+    with open("temp_mri.png", "wb") as f:
+        f.write(file.getbuffer())
+        
+    img = Image.open(file).convert('RGB')
+    st.image(img, caption="IRM à analyser", width=350)
     
-    img = Image.open(uploaded_file).convert('RGB')
-    st.image(img, caption="IRM Patient", width=400)
-    
-    if st.button("🧬 GÉNÉRER LE DIAGNOSTIC"):
-        img_processed = img.resize((224, 224))
-        img_array = np.array(img_processed) / 255.0
+    if st.button("🧬 LANCER LE DIAGNOSTIC BIOMÉDICAL"):
+        # Prétraitement (224x224 est la taille standard MobileNet/Sequential)
+        img_resized = img.resize((224, 224))
+        img_array = np.array(img_resized) / 255.0
         img_array = np.expand_dims(img_array, axis=0)
         
-        preds = model.predict(img_array)
-        class_names = ['Gliome', 'Méningiome', 'Pas de tumeur', 'Pituitaire']
-        res_idx = np.argmax(preds)
-        diag = class_names[res_idx]
-        conf = np.max(preds) * 100
+        # Prédiction
+        prediction = model.predict(img_array)
+        classes = ['Gliome', 'Méningiome', 'Pas de tumeur', 'Pituitaire']
+        res_idx = np.argmax(prediction)
+        diag_final = classes[res_idx]
+        conf_final = np.max(prediction) * 100
         
+        # Affichage Résultat
         st.markdown(f"""
-            <div style="background-color: rgba(30, 58, 95, 0.1); padding: 20px; border-left: 5px solid #4A90E2; border-radius: 10px;">
-                <h2 style="color: #1E3A5F;">Résultat de l'analyse : {diag}</h2>
-                <h4>Confiance : {conf:.2f}%</h4>
+            <div style="background-color: white; border-left: 10px solid #1E3A5F; padding: 20px; border-radius: 10px; box-shadow: 2px 2px 15px rgba(0,0,0,0.1);">
+                <h2 style="color: #1E3A5F; margin: 0;">Diagnostic : {diag_final}</h2>
+                <h4 style="color: #4A90E2; margin: 0;">Fiabilité du modèle : {conf_final:.2f}%</h4>
             </div>
         """, unsafe_allow_html=True)
         
+        # Bouton PDF
         if nom and prenom:
-            pdf_out = create_pdf(nom, prenom, date_naiss, lieu_naiss, diag, conf, "temp_img.png")
-            st.download_button("📥 Télécharger le Rapport Médical Officiel", pdf_out, f"Rapport_{nom}.pdf")
+            pdf_bytes = generate_medical_pdf(nom, prenom, date_n, lieu_n, diag_final, conf_final, "temp_mri.png")
+            st.download_button(
+                label="📥 Télécharger le compte-rendu d'examen",
+                data=pdf_bytes,
+                file_name=f"Analyse_NeuroScan_{nom}.pdf",
+                mime="application/pdf"
+            )
+        else:
+            st.warning("Veuillez remplir le nom et le prénom pour générer le rapport PDF.")
 
-# --- 8. FOOTER & LINKEDIN ---
+# --- 8. FOOTER ---
 st.markdown("---")
 st.markdown(f"""
-    <div style="text-align: center;">
-        <p>Pour plus d'expertise biomédicale ou technique :</p>
-        <a href="https://www.linkedin.com/in/douaa-houbad-006b6a305" target="_blank">
-            <button style="background-color: #0077B5; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold;">
+    <div style="text-align: center; padding: 20px;">
+        <p style="color: #555;">Expertise technique et médicale par l'ingénieur Houbad Douaa</p>
+        <a href="https://www.linkedin.com/in/douaa-houbad-006b6a305" target="_blank" style="text-decoration: none;">
+            <button style="background-color: #0077B5; color: white; border: none; padding: 12px 25px; border-radius: 30px; cursor: pointer; font-size: 16px; font-weight: bold;">
                 for more information cliquer ici
             </button>
         </a>
