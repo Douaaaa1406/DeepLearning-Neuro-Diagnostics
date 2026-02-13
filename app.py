@@ -40,22 +40,27 @@ st.markdown(f"""
 
 # --- 3. CHARGEMENT DU MODÈLE ---
 @st.cache_resource
+@st.cache_resource
 def load_my_model():
     model_path = 'brain_tumor_model_v1.h5'
     file_id = '17S8069HGd_H31pxpMmlFh7eB9TzmTEyE'
     url = f'https://drive.google.com/uc?id={file_id}'
     
     if not os.path.exists(model_path):
-        with st.spinner("Téléchargement du modèle IA (Houbad Douaa)..."):
+        with st.spinner("Téléchargement du modèle IA de Houbad Douaa..."):
             gdown.download(url, model_path, quiet=False)
     
     try:
-        # On charge sans compiler pour éviter les conflits de versions de Keras
+        # Tentative avec le chargement Keras moderne
         return tf.keras.models.load_model(model_path, compile=False)
-    except Exception as e:
-        st.error(f"Erreur technique lors du chargement : {e}")
-        return None
-
+    except Exception:
+        try:
+            # Tentative de chargement en ignorant les erreurs de structure (Mode Legacy)
+            import h5py
+            return tf.keras.layers.TFSMLayer(model_path, call_endpoint='serving_default')
+        except Exception as e:
+            st.error(f"Le modèle a un conflit de structure : {e}")
+            return None
 # --- 4. LOGIQUE PRINCIPALE ---
 model = load_my_model()
 class_names = ['Gliome', 'Méningiome', 'Pas de tumeur', 'Pituitaire']
