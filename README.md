@@ -31,9 +31,3 @@ Après un entraînement rigoureux sur plus de 7 000 images, le modèle a été v
 
 ---
 
-## 🛠️ Installation et Utilisation
-
-1. **Cloner le projet** :
-   ```bash
-   git clone [https://github.com/Houbad_Douaa/NeuroScan-AI.git](https://github.com/Houbad_Douaa/NeuroScan-AI.git)
-   cd NeuroScan-AI
