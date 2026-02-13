@@ -1,9 +1,11 @@
 import streamlit as st
 import tensorflow as tf
-from PIL import Image, ImageOps
+from PIL import Image
 import numpy as np
-from fpdf import FPDF # Ne pas oublier cet import !
+from fpdf import FPDF
 import datetime
+import os
+import gdown  # Bibliothèque pour télécharger depuis Drive
 
 # --- 1. CONFIGURATION ET STYLE ---
 st.set_page_config(page_title="NeuroScan AI | Houbad Douaa", page_icon="🧠")
@@ -40,11 +42,21 @@ st.markdown(f"""
     </div>
     """, unsafe_allow_html=True)
 
-# --- 3. FONCTIONS TECHNIQUES ---
+# --- 3. CHARGEMENT DU MODÈLE DEPUIS DRIVE ---
 @st.cache_resource
 def load_my_model():
-    return tf.keras.models.load_model('brain_tumor_model_v1.h5')
+    model_path = 'brain_tumor_model_v1.h5'
+    # Ton ID de fichier Drive
+    file_id = '17S8069HGd_H31pxpMmlFh7eB9TzmTEyE'
+    url = f'https://drive.google.com/uc?id={file_id}'
+    
+    if not os.path.exists(model_path):
+        with st.spinner("Téléchargement du modèle IA de Houbad Douaa (cela peut prendre un moment)..."):
+            gdown.download(url, model_path, quiet=False)
+    
+    return tf.keras.models.load_model(model_path)
 
+# --- 4. FONCTION PDF ---
 def generate_pdf(nom, age, diagnostic, confiance):
     pdf = FPDF()
     pdf.add_page()
@@ -57,21 +69,24 @@ def generate_pdf(nom, age, diagnostic, confiance):
     pdf.cell(200, 10, "RAPPORT D'ANALYSE MÉDICALE", ln=True, align='C')
     pdf.ln(10)
     pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, f"Patient: {nom} ({age} ans)", ln=True)
-    pdf.cell(200, 10, f"Diagnostic IA: {diagnostic}", ln=True)
-    pdf.cell(200, 10, f"Confiance: {confiance:.2f}%", ln=True)
+    pdf.cell(200, 10, f"Date : {datetime.date.today()}", ln=True)
+    pdf.cell(200, 10, f"Patient : {nom} ({age} ans)", ln=True)
+    pdf.cell(200, 10, f"Diagnostic IA : {diagnostic}", ln=True)
+    pdf.cell(200, 10, f"Indice de confiance : {confiance:.2f}%", ln=True)
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 4. LOGIQUE DE L'APPLICATION ---
+# Lancement
 model = load_my_model()
 class_names = ['Gliome', 'Méningiome', 'Pas de tumeur', 'Pituitaire']
 
+# UI latérale
 with st.sidebar:
     st.header("👤 Paramètres")
     nom_patient = st.text_input("Nom du Patient")
     age_patient = st.number_input("Âge", 0, 120, 30)
-    st.markdown("[🔗 Mon profil LinkedIn](https://www.linkedin.com/in/douaa-houbad-006b6a305)")
+    st.markdown(f"[🔗 Mon profil LinkedIn](https://www.linkedin.com/in/douaa-houbad-006b6a305)")
 
+# Upload et Analyse
 uploaded_file = st.file_uploader("Uploadez l'IRM cérébrale...", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None:
@@ -79,21 +94,18 @@ if uploaded_file is not None:
     st.image(img, caption="IRM à analyser", use_container_width=True)
     
     if st.button("Lancer l'Analyse"):
-        # Prétraitement
         img_resized = img.resize((224, 224))
         img_array = np.array(img_resized) / 255.0
         img_array = np.expand_dims(img_array, axis=0)
         
-        # Prédiction
         prediction = model.predict(img_array)
         res_idx = np.argmax(prediction)
         conf = np.max(prediction) * 100
         diag = class_names[res_idx]
         
         st.subheader(f"Résultat : {diag}")
-        st.progress(int(conf))
-        st.write(f"Indice de confiance : {conf:.2f}%")
+        st.write(f"Confiance : {conf:.2f}%")
         
         if nom_patient:
             pdf_data = generate_pdf(nom_patient, age_patient, diag, conf)
-            st.download_button("📥 Télécharger le Rapport (PDF)", pdf_data, f"Rapport_{nom_patient}.pdf")
+            st.download_button("📥 Télécharger le Rapport PDF", pdf_data, f"Rapport_{nom_patient}.pdf")
