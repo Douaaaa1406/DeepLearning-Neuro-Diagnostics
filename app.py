@@ -10,7 +10,7 @@ import gdown
 # --- 1. CONFIGURATION DE LA PAGE ---
 st.set_page_config(page_title="NeuroScan AI | Houbad Douaa", page_icon="🧠", layout="wide")
 
-# Style CSS (Interface & Background)
+# Style CSS
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] > .main {
@@ -41,26 +41,24 @@ with col_h2:
         </div>
     """, unsafe_allow_html=True)
 
-# --- 3. CHARGEMENT DU MODÈLE (AJUSTÉ AVEC NOUVEL ID) ---
+# --- 3. CHARGEMENT DU MODÈLE (NOUVEL ID + ARCHITECTURE RÉGLÉE) ---
 @st.cache_resource
 def load_my_model():
     model_path = 'brain_tumor_model_final_v2.keras'
-    # Nouvel ID extrait de votre lien Drive
     file_id = '1RW2S9NE425t1Q5unEZVswO1-JH9QevPr' 
     url = f'https://drive.google.com/uc?id={file_id}'
     
     if not os.path.exists(model_path):
-        with st.spinner("Téléchargement du nouveau modèle optimisé..."):
+        with st.spinner("Téléchargement du modèle haute précision..."):
             gdown.download(url, model_path, quiet=False)
     
     try:
-        # Re-construction de l'architecture pour charger les poids du fine-tuning
         base_model = tf.keras.applications.MobileNetV2(input_shape=(224, 224, 3), include_top=False, weights=None)
         model = tf.keras.Sequential([
             base_model,
             tf.keras.layers.GlobalAveragePooling2D(),
-            tf.keras.layers.Dense(256, activation='relu'), # Ajusté à 256 selon l'entraînement
-            tf.keras.layers.Dropout(0.5), # Ajusté à 0.5 selon l'entraînement
+            tf.keras.layers.Dense(256, activation='relu'),
+            tf.keras.layers.Dropout(0.5),
             tf.keras.layers.Dense(4, activation='softmax')
         ])
         model.load_weights(model_path)
@@ -87,14 +85,14 @@ with col_p2:
 # --- 5. ANALYSE ET DIAGNOSTIC ---
 if file is not None and model is not None:
     img = Image.open(file).convert('RGB')
-    st.image(img, width=300, caption="Scan IRM prêt pour l'analyse")
+    st.image(img, width=300, caption="Scan IRM prêt")
     
     if st.button("🧬 GÉNÉRER LE DIAGNOSTIC"):
-        # Étape A: Amélioration du contraste
+        # Étape A: Contraste modéré (1.1 pour ne pas effacer les Gliomes infiltrants)
         enhancer = ImageEnhance.Contrast(img)
-        img_enhanced = enhancer.enhance(1.25)
+        img_enhanced = enhancer.enhance(1.1)
         
-        # Étape B: Prétraitement (Normalisation 1/255)
+        # Étape B: Prétraitement
         img_resized = img_enhanced.resize((224, 224), Image.LANCZOS)
         img_array = np.array(img_resized).astype('float32') / 255.0
         img_array = np.expand_dims(img_array, axis=0)
@@ -102,31 +100,28 @@ if file is not None and model is not None:
         # Étape C: Prédiction
         prediction = model.predict(img_array)[0]
         
-        # --- ORDRE DES CLASSES SELON TON PC ---
-        classes = ['Pituitaire', 'Pas de tumeur', 'Méningiome', 'Gliome']
+        # --- CHANGEMENT CRUCIAL : ORDRE ALPHABÉTIQUE STANDARD ---
+        # Si Gliome échouait, c'est parce que l'IA attend cet ordre :
+        classes = ['Gliome', 'Méningiome', 'Pas de tumeur', 'Pituitaire']
         
         res_idx = np.argmax(prediction)
         diag = classes[res_idx]
         conf = prediction[res_idx] * 100
         
-        # Affichage des scores
+        # Affichage
         st.write("### 📊 Analyse des probabilités :")
         cols = st.columns(4)
         for i in range(4):
             cols[i].metric(classes[i], f"{prediction[i]*100:.1f}%")
 
-        # Alerte d'incertitude
-        if (prediction[1] > 0.30 and prediction[2] > 0.30):
-            st.warning("⚠️ **Alerte :** Incertitude détectée entre 'Sain' et 'Méningiome'.")
-
         st.markdown(f"""
             <div style="background-color: white; border-left: 10px solid #1E3A5F; padding: 20px; border-radius: 10px; margin-top:20px;">
                 <h2 style="color: #1E3A5F; margin:0;">Résultat Final : {diag}</h2>
-                <h4 style="color: #4A90E2; margin:0;">Précision de l'IA : {conf:.2f}%</h4>
+                <h4 style="color: #4A90E2; margin:0;">Fiabilité : {conf:.2f}%</h4>
             </div>
         """, unsafe_allow_html=True)
         
-        # --- 6. GÉNÉRATION DU RAPPORT PDF ---
+        # --- 6. RAPPORT PDF ---
         if nom and prenom:
             img.save("temp_report.jpg", "JPEG")
             pdf = FPDF()
