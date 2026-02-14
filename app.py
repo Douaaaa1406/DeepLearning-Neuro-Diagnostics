@@ -10,7 +10,7 @@ import gdown
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="NeuroScan AI | Houbad Douaa", page_icon="🧠", layout="wide")
 
-# Style CSS
+# Style CSS pour le background MRI
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] > .main {
@@ -32,10 +32,10 @@ with col_h1:
 
 with col_h2:
     now = datetime.datetime.now()
-    st.markdown(f"""<div style="text-align: right; border: 2px solid #1E3A5F; padding: 10px; border-radius: 10px;">
+    st.markdown(f"""<div style="text-align: right; border: 2px solid #1E3A5F; padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.7);">
         📅 {now.strftime("%d/%m/%Y")}<br>⌚ {now.strftime("%H:%M:%S")}</div>""", unsafe_allow_html=True)
 
-# --- 3. RECONSTRUCTION SÉQUENTIELLE DU MODÈLE ---
+# --- 3. RECONSTRUCTION DE L'ARCHITECTURE EXACTE ---
 @st.cache_resource
 def load_my_model():
     model_path = 'model.keras'
@@ -46,8 +46,7 @@ def load_my_model():
         gdown.download(url, model_path, quiet=False)
     
     try:
-        # On utilise une structure Sequential pour éviter les branchements complexes (Functional API)
-        # qui causent l'erreur des 2 tenseurs.
+        # On reconstruit l'architecture qui correspond à tes poids (1280 -> 128 -> 4)
         base_model = tf.keras.applications.MobileNetV2(
             input_shape=(224, 224, 3),
             include_top=False,
@@ -57,15 +56,16 @@ def load_my_model():
         model = tf.keras.Sequential([
             base_model,
             tf.keras.layers.GlobalAveragePooling2D(),
+            tf.keras.layers.Dense(128, activation='relu'), # LA COUCHE MANQUANTE ÉTAIT ICI
             tf.keras.layers.Dropout(0.5),
             tf.keras.layers.Dense(4, activation='softmax')
         ])
         
-        # Chargement des poids uniquement
+        # Chargement des poids
         model.load_weights(model_path)
         return model
     except Exception as e:
-        st.error(f"Erreur de reconstruction : {e}")
+        st.error(f"Ajustement de l'architecture nécessaire : {e}")
         return None
 
 model = load_my_model()
@@ -84,14 +84,14 @@ with col2:
     st.subheader("🔬 Image IRM")
     file = st.file_uploader("Charger l'image", type=["jpg", "png", "jpeg"])
 
-# --- 5. LOGIQUE DE DIAGNOSTIC ---
+# --- 5. ANALYSE ---
 
 
 if file is not None and model is not None:
     img = Image.open(file).convert('RGB')
     st.image(img, width=300, caption="IRM Patient")
     
-    if st.button("🧬 ANALYSER"):
+    if st.button("🧬 ANALYSER L'IRM"):
         # Prétraitement MobileNetV2
         img_resized = img.resize((224, 224))
         img_array = np.array(img_resized)
@@ -104,9 +104,9 @@ if file is not None and model is not None:
         diag = classes[res_idx]
         conf = np.max(prediction) * 100
         
-        st.success(f"Diagnostic : {diag} ({conf:.2f}%)")
+        st.success(f"Diagnostic : {diag} (Indice de confiance : {conf:.2f}%)")
         
-        # PDF Report
+        # Rapport PDF
         if nom and prenom:
             with open("temp.png", "wb") as f:
                 f.write(file.getbuffer())
@@ -117,11 +117,12 @@ if file is not None and model is not None:
             pdf.ln(10)
             pdf.set_font("Arial", size=12)
             pdf.cell(0, 10, f"Patient : {nom.upper()} {prenom.capitalize()}", ln=True)
-            pdf.cell(0, 10, f"Diagnostic final : {diag}", ln=True)
+            pdf.cell(0, 10, f"Né(e) le : {date_n} à {lieu_n}", ln=True)
+            pdf.cell(0, 10, f"Conclusion : {diag}", ln=True)
             pdf.image("temp.png", x=60, w=80)
             pdf_bytes = pdf.output(dest='S').encode('latin-1')
-            st.download_button("📥 Télécharger PDF", pdf_bytes, f"Rapport_{nom}.pdf")
+            st.download_button("📥 Télécharger le Rapport", pdf_bytes, f"Rapport_{nom}.pdf")
 
 # --- 6. FOOTER ---
 st.markdown("---")
-st.markdown('<a href="https://www.linkedin.com/in/douaa-houbad-006b6a305" target="_blank"><button style="width:100%; background-color:#0077B5; color:white; border:none; padding:10px; border-radius:5px; font-weight:bold;">for more information cliquer ici</button></a>', unsafe_allow_html=True)
+st.markdown('<a href="https://www.linkedin.com/in/douaa-houbad-006b6a305" target="_blank"><button style="width:100%; background-color:#0077B5; color:white; border:none; padding:10px; border-radius:5px; font-weight:bold; cursor:pointer;">for more information cliquer ici</button></a>', unsafe_allow_html=True)
