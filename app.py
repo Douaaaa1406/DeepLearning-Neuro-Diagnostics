@@ -10,7 +10,6 @@ import gdown
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="NeuroScan AI | Houbad Douaa", page_icon="🧠", layout="wide")
 
-# Style CSS pour le background MRI
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] > .main {
@@ -35,7 +34,7 @@ with col_h2:
     st.markdown(f"""<div style="text-align: right; border: 2px solid #1E3A5F; padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.7);">
         📅 {now.strftime("%d/%m/%Y")}<br>⌚ {now.strftime("%H:%M:%S")}</div>""", unsafe_allow_html=True)
 
-# --- 3. RECONSTRUCTION DE L'ARCHITECTURE EXACTE ---
+# --- 3. CHARGEMENT DU MODÈLE ---
 @st.cache_resource
 def load_my_model():
     model_path = 'model.keras'
@@ -46,26 +45,21 @@ def load_my_model():
         gdown.download(url, model_path, quiet=False)
     
     try:
-        # On reconstruit l'architecture qui correspond à tes poids (1280 -> 128 -> 4)
+        # Architecture MobileNetV2 + Dense(128) + Dense(4)
         base_model = tf.keras.applications.MobileNetV2(
-            input_shape=(224, 224, 3),
-            include_top=False,
-            weights=None
+            input_shape=(224, 224, 3), include_top=False, weights=None
         )
-        
         model = tf.keras.Sequential([
             base_model,
             tf.keras.layers.GlobalAveragePooling2D(),
-            tf.keras.layers.Dense(128, activation='relu'), # LA COUCHE MANQUANTE ÉTAIT ICI
+            tf.keras.layers.Dense(128, activation='relu'),
             tf.keras.layers.Dropout(0.5),
             tf.keras.layers.Dense(4, activation='softmax')
         ])
-        
-        # Chargement des poids
         model.load_weights(model_path)
         return model
     except Exception as e:
-        st.error(f"Ajustement de l'architecture nécessaire : {e}")
+        st.error(f"Erreur de structure : {e}")
         return None
 
 model = load_my_model()
@@ -84,15 +78,18 @@ with col2:
     st.subheader("🔬 Image IRM")
     file = st.file_uploader("Charger l'image", type=["jpg", "png", "jpeg"])
 
-# --- 5. ANALYSE ---
-
-
+# --- 5. ANALYSE ET PDF ---
 if file is not None and model is not None:
+    # Traitement de l'image avec PIL pour éviter l'erreur FPDF
     img = Image.open(file).convert('RGB')
     st.image(img, width=300, caption="IRM Patient")
     
     if st.button("🧬 ANALYSER L'IRM"):
-        # Prétraitement MobileNetV2
+        # 1. Sauvegarde en JPG (format le plus stable pour FPDF)
+        temp_img_path = "temp_report_img.jpg"
+        img.save(temp_img_path, "JPEG")
+        
+        # 2. Prédiction
         img_resized = img.resize((224, 224))
         img_array = np.array(img_resized)
         img_array = tf.keras.applications.mobilenet_v2.preprocess_input(img_array)
@@ -104,12 +101,10 @@ if file is not None and model is not None:
         diag = classes[res_idx]
         conf = np.max(prediction) * 100
         
-        st.success(f"Diagnostic : {diag} (Indice de confiance : {conf:.2f}%)")
+        st.success(f"Diagnostic : {diag} (Fiabilité : {conf:.2f}%)")
         
-        # Rapport PDF
+        # 3. Génération PDF avec le fichier JPEG sauvegardé
         if nom and prenom:
-            with open("temp.png", "wb") as f:
-                f.write(file.getbuffer())
             pdf = FPDF()
             pdf.add_page()
             pdf.set_font("Arial", 'B', 16)
@@ -117,9 +112,11 @@ if file is not None and model is not None:
             pdf.ln(10)
             pdf.set_font("Arial", size=12)
             pdf.cell(0, 10, f"Patient : {nom.upper()} {prenom.capitalize()}", ln=True)
-            pdf.cell(0, 10, f"Né(e) le : {date_n} à {lieu_n}", ln=True)
-            pdf.cell(0, 10, f"Conclusion : {diag}", ln=True)
-            pdf.image("temp.png", x=60, w=80)
+            pdf.cell(0, 10, f"Conclusion de l'IA : {diag} ({conf:.2f}%)", ln=True)
+            pdf.ln(5)
+            # Utilisation du JPG pour garantir la compatibilité
+            pdf.image(temp_img_path, x=60, w=80) 
+            
             pdf_bytes = pdf.output(dest='S').encode('latin-1')
             st.download_button("📥 Télécharger le Rapport", pdf_bytes, f"Rapport_{nom}.pdf")
 
