@@ -1,7 +1,6 @@
-streamlit==1.31.0
-tensorflow==2.15.0
-keras==2.15.0
+streamlit
+tensorflow
 pillow
-numpy==1.26.4
+numpy
 fpdf
 gdown
