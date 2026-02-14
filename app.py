@@ -24,7 +24,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. EN-TÊTE & HORLOGE ---
+# --- 2. EN-TÊTE ---
 col_h1, col_h2 = st.columns([2, 1])
 with col_h1:
     st.markdown('<h1 style="color: #1E3A5F;">HOUBAD DOUAA</h1>', unsafe_allow_html=True)
@@ -35,7 +35,7 @@ with col_h2:
     st.markdown(f"""<div style="text-align: right; border: 2px solid #1E3A5F; padding: 10px; border-radius: 10px;">
         📅 {now.strftime("%d/%m/%Y")}<br>⌚ {now.strftime("%H:%M:%S")}</div>""", unsafe_allow_html=True)
 
-# --- 3. CHARGEMENT SÉCURISÉ DU MODÈLE ---
+# --- 3. RECONSTRUCTION MANUELLE DU MODÈLE ---
 @st.cache_resource
 def load_my_model():
     model_path = 'model.keras'
@@ -46,20 +46,37 @@ def load_my_model():
         gdown.download(url, model_path, quiet=False)
     
     try:
-        # Tentative 1 : Standard
-        return tf.keras.models.load_model(model_path, compile=False)
-    except Exception:
+        # TECHNIQUE ULTIME : Reconstruire l'architecture MobileNetV2
+        # On crée un modèle vide avec la même structure que ton projet Colab
+        base_model = tf.keras.applications.MobileNetV2(
+            input_shape=(224, 224, 3), 
+            include_top=False, 
+            weights=None # On ne charge pas les poids ImageNet
+        )
+        
+        # On ajoute tes couches personnalisées (Dense)
+        x = base_model.output
+        x = tf.keras.layers.GlobalAveragePooling2D()(x)
+        x = tf.keras.layers.Dropout(0.5)(x)
+        predictions = tf.keras.layers.Dense(4, activation='softmax')(x)
+        
+        reconstructed_model = tf.keras.models.Model(inputs=base_model.input, outputs=predictions)
+        
+        # On injecte les poids de ton fichier .keras dans cette structure propre
+        reconstructed_model.load_weights(model_path)
+        return reconstructed_model
+        
+    except Exception as e:
+        # Si la reconstruction manuelle échoue, on tente un dernier chargement brut
         try:
-            # Tentative 2 : Chargement en tant que couche (plus robuste aux erreurs de shape)
-            return tf.keras.models.load_model(model_path, compile=False, safe_mode=False)
-        except Exception as e:
-            st.error(f"Erreur critique de structure : {e}")
+            return tf.keras.models.load_model(model_path, compile=False)
+        except Exception as final_error:
+            st.error(f"Erreur de structure persistante : {final_error}")
             return None
 
-# INITIALISATION DE LA VARIABLE (Évite le NameError)
 model = load_my_model()
 
-# --- 4. INTERFACE ---
+# --- 4. INTERFACE UTILISATEUR ---
 st.markdown("---")
 col1, col2 = st.columns(2)
 with col1:
@@ -74,46 +91,48 @@ with col2:
     file = st.file_uploader("Charger l'image", type=["jpg", "png", "jpeg"])
 
 # --- 5. LOGIQUE DE DIAGNOSTIC ---
-def generate_pdf(nom, prenom, date_n, lieu_n, result, confidence, img_path):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(0, 10, "RAPPORT MEDICAL NEUROSCAN AI", ln=True, align='C')
-    pdf.image(img_path, x=60, w=90)
-    pdf.set_font("Arial", size=12)
-    pdf.ln(10)
-    pdf.cell(0, 10, f"Patient : {nom} {prenom}", ln=True)
-    pdf.cell(0, 10, f"Diagnostic : {result} ({confidence:.2f}%)", ln=True)
-    return pdf.output(dest='S').encode('latin-1')
 
-# VERIFICATION DE SECURITE AVANT PREDICTION
-if file is not None:
-    if model is None:
-        st.error("Le cerveau de l'IA n'est pas prêt. Vérifiez le fichier model.keras.")
-    else:
-        # On continue seulement si model existe
-        img = Image.open(file).convert('RGB')
-        st.image(img, width=300)
+
+if file is not None and model is not None:
+    img = Image.open(file).convert('RGB')
+    st.image(img, width=350, caption="IRM Patient")
+    
+    if st.button("🧬 LANCER L'ANALYSE"):
+        with open("temp.png", "wb") as f:
+            f.write(file.getbuffer())
         
-        if st.button("🧬 ANALYSER"):
-            with open("temp.png", "wb") as f:
-                f.write(file.getbuffer())
-            
-            img_resized = img.resize((224, 224))
-            img_array = np.array(img_resized) / 255.0
-            img_array = np.expand_dims(img_array, axis=0)
-            
-            prediction = model.predict(img_array)
-            classes = ['Gliome', 'Méningiome', 'Pas de tumeur', 'Pituitaire']
-            res_idx = np.argmax(prediction)
-            diag = classes[res_idx]
-            conf = np.max(prediction) * 100
-            
-            st.success(f"Résultat : {diag} ({conf:.2f}%)")
-            
-            if nom and prenom:
-                pdf_bytes = generate_pdf(nom, prenom, date_n, lieu_n, diag, conf, "temp.png")
-                st.download_button("📥 Télécharger Rapport PDF", pdf_bytes, f"Rapport_{nom}.pdf")
+        # Prétraitement exact pour MobileNetV2
+        img_resized = img.resize((224, 224))
+        img_array = np.array(img_resized)
+        img_array = tf.keras.applications.mobilenet_v2.preprocess_input(img_array)
+        img_array = np.expand_dims(img_array, axis=0)
+        
+        prediction = model.predict(img_array)
+        classes = ['Gliome', 'Méningiome', 'Pas de tumeur', 'Pituitaire']
+        res_idx = np.argmax(prediction)
+        diag = classes[res_idx]
+        conf = np.max(prediction) * 100
+        
+        st.markdown(f"""
+            <div style="background-color: white; border-left: 10px solid #1E3A5F; padding: 20px; border-radius: 10px;">
+                <h2 style="color: #1E3A5F;">Diagnostic : {diag}</h2>
+                <h4 style="color: #4A90E2;">Indice de confiance : {conf:.2f}%</h4>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Génération du PDF (Simplifiée pour la démo)
+        if nom and prenom:
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", 'B', 16)
+            pdf.cell(0, 10, "RAPPORT MEDICAL NEUROSCAN AI", ln=True, align='C')
+            pdf.ln(10)
+            pdf.set_font("Arial", size=12)
+            pdf.cell(0, 10, f"Patient : {nom.upper()} {prenom.capitalize()}", ln=True)
+            pdf.cell(0, 10, f"Diagnostic : {diag} ({conf:.2f}%)", ln=True)
+            pdf.image("temp.png", x=60, w=90)
+            pdf_bytes = pdf.output(dest='S').encode('latin-1')
+            st.download_button("📥 Télécharger Rapport PDF", pdf_bytes, f"Rapport_{nom}.pdf")
 
 # --- 6. FOOTER ---
 st.markdown("---")
