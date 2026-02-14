@@ -97,8 +97,17 @@ if file is not None and model is not None:
         img_array = np.array(img_resized).astype('float32') / 255.0
         img_array = np.expand_dims(img_array, axis=0)
         
-        # Étape C: Prédiction
-        prediction = model.predict(img_array)[0]
+      prediction = model.predict(img_array)[0]
+        
+        # --- NOUVEAU : VÉRIFICATION DE VALIDITÉ ---
+        # Si la probabilité maximale est trop faible (ex: < 60%), 
+        # ou si l'image est trop "plate" (incertitude totale), on rejette.
+        confiance_max = np.max(prediction)
+        
+        if confiance_max < 0.65: # Seuil de sécurité à 65%
+            st.error("❌ Image Invalide : Le système ne reconnaît pas cette image comme une IRM cérébrale valide.")
+            st.info("Veuillez charger une coupe axiale d'IRM cérébrale de bonne qualité.")
+        else:
         
         # --- CHANGEMENT CRUCIAL : ORDRE ALPHABÉTIQUE STANDARD ---
         # Si Gliome échouait, c'est parce que l'IA attend cet ordre :
