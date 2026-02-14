@@ -1,6 +1,6 @@
 import streamlit as st
 import tensorflow as tf
-from PIL import Image
+from PIL import Image, ImageOps
 import numpy as np
 from fpdf import FPDF
 import datetime
@@ -10,6 +10,7 @@ import gdown
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="NeuroScan AI | Houbad Douaa", page_icon="🧠", layout="wide")
 
+# --- 2. STYLE CSS ---
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] > .main {
@@ -23,18 +24,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. EN-TÊTE ---
+# --- 3. EN-TÊTE ---
 col_h1, col_h2 = st.columns([2, 1])
 with col_h1:
     st.markdown('<h1 style="color: #1E3A5F; margin-bottom:0;">HOUBAD DOUAA</h1>', unsafe_allow_html=True)
     st.markdown('<h3 style="color: #4A90E2; margin-top:0;">Ingénierie Biomédicale & Data Science</h3>', unsafe_allow_html=True)
 
-with col_h2:
-    now = datetime.datetime.now()
-    st.markdown(f"""<div style="text-align: right; border: 2px solid #1E3A5F; padding: 10px; border-radius: 10px; background: rgba(255,255,255,0.7);">
-        📅 {now.strftime("%d/%m/%Y")}<br>⌚ {now.strftime("%H:%M:%S")}</div>""", unsafe_allow_html=True)
-
-# --- 3. CHARGEMENT DU MODÈLE (CORRIGÉ SELON COLAB) ---
+# --- 4. CHARGEMENT DU MODÈLE ---
 @st.cache_resource
 def load_my_model():
     model_path = 'brain_tumor_model_final.keras'
@@ -45,13 +41,12 @@ def load_my_model():
         gdown.download(url, model_path, quiet=False)
     
     try:
-        # Reconstruction identique à ton bloc Sequential de Colab
         base_model = tf.keras.applications.MobileNetV2(input_shape=(224, 224, 3), include_top=False, weights=None)
         model = tf.keras.Sequential([
             base_model,
             tf.keras.layers.GlobalAveragePooling2D(),
             tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dropout(0.3), # Ton dropout était de 0.3 en Colab
+            tf.keras.layers.Dropout(0.3),
             tf.keras.layers.Dense(4, activation='softmax')
         ])
         model.load_weights(model_path)
@@ -62,7 +57,7 @@ def load_my_model():
 
 model = load_my_model()
 
-# --- 4. INTERFACE ---
+# --- 5. INTERFACE ---
 st.markdown("---")
 col_p1, col_p2 = st.columns(2)
 with col_p1:
@@ -76,39 +71,48 @@ with col_p2:
     st.subheader("🔬 Image IRM")
     file = st.file_uploader("Charger le scan", type=["jpg", "png", "jpeg"])
 
-# --- 5. LOGIQUE DE DIAGNOSTIC ---
+# --- 6. ANALYSE ET DÉBOGAGE ---
+
+
 if file is not None and model is not None:
+    # Lecture forcée en RGB (MobileNetV2 ne comprend pas le niveaux de gris seul)
     img = Image.open(file).convert('RGB')
-    st.image(img, width=300, caption="Scan IRM chargé")
+    st.image(img, width=300, caption="Scan chargé")
     
     if st.button("🧬 GÉNÉRER LE DIAGNOSTIC"):
-        # PRÉTRAITEMENT IDENTIQUE À COLAB
-        # Tu as utilisé rescale=1./255 dans ton ImageDataGenerator
-        img_resized = img.resize((224, 224))
-        img_array = np.array(img_resized).astype('float32') / 255.0  # CORRECTION ICI
+        # PRÉTRAITEMENT RIGOUREUX (Identique à ImageDataGenerator)
+        img_resized = img.resize((224, 224), Image.LANCZOS)
+        img_array = np.array(img_resized).astype('float32') / 255.0
         img_array = np.expand_dims(img_array, axis=0)
         
         # Prédiction
         prediction = model.predict(img_array)
-        # ORDRE ALPHABÉTIQUE EXACT SELON TES DOSSIERS COLAB
-        classes = ['Glioma', 'Meningioma', 'No Tumor', 'Pituitary']
+        
+        # ORDRE ALPHABÉTIQUE STRICT (glioma, meningioma, notumor, pituitary)
+        classes = ['Gliome', 'Méningiome', 'Pas de tumeur', 'Pituitaire']
         res_idx = np.argmax(prediction)
         diag = classes[res_idx]
         conf = np.max(prediction) * 100
         
+        # AFFICHAGE DES SCORES BRUTS POUR COMPRENDRE L'ERREUR
+        st.write("### 📊 Analyse des probabilités :")
+        cols = st.columns(4)
+        for i, c in enumerate(classes):
+            cols[i].metric(c, f"{prediction[0][i]*100:.1f}%")
+
         st.markdown(f"""
-            <div style="background-color: white; border-left: 10px solid #1E3A5F; padding: 20px; border-radius: 10px;">
-                <h2 style="color: #1E3A5F; margin:0;">Diagnostic : {diag}</h2>
-                <h4 style="color: #4A90E2; margin:0;">Fiabilité : {conf:.2f}%</h4>
+            <div style="background-color: white; border-left: 10px solid #1E3A5F; padding: 20px; border-radius: 10px; margin-top:20px;">
+                <h2 style="color: #1E3A5F; margin:0;">Diagnostic Final : {diag}</h2>
+                <h4 style="color: #4A90E2; margin:0;">Confiance globale : {conf:.2f}%</h4>
             </div>
         """, unsafe_allow_html=True)
         
-        # --- PDF GÉNÉRATION ---
+        # --- GENERATION PDF ---
         if nom and prenom:
             img.save("temp.jpg", "JPEG")
             pdf = FPDF()
             pdf.add_page()
-            # Style header
+            # Header
             pdf.set_fill_color(30, 58, 95)
             pdf.rect(0, 0, 210, 40, 'F')
             pdf.set_text_color(255, 255, 255)
@@ -121,27 +125,27 @@ if file is not None and model is not None:
             pdf.cell(0, 10, " 1. INFORMATIONS PATIENT", 1, ln=True)
             pdf.set_font("Arial", '', 11)
             pdf.cell(95, 10, f" Nom : {nom.upper()}", 1)
-            pdf.cell(95, 10, f" Prénom : {prenom.capitalize()}", 1, ln=True)
+            pdf.cell(95, 10, f" Prenom : {prenom.capitalize()}", 1, ln=True)
             
             pdf.ln(10)
             pdf.image("temp.jpg", x=60, w=90)
             pdf.set_y(pdf.get_y() + 95)
             
             pdf.set_font("Arial", 'B', 12)
-            pdf.cell(0, 10, " 2. RÉSULTATS IA", 1, ln=True)
+            pdf.cell(0, 10, " 2. RESULTATS IA", 1, ln=True)
             pdf.set_font("Arial", 'B', 14)
             pdf.cell(0, 15, f" DIAGNOSTIC : {diag.upper()}", 1, ln=True, align='C')
             
-            # FOOTER (Comme demandé)
+            # Footer
             pdf.set_y(-40)
             pdf.set_font("Arial", 'B', 10)
-            pdf.cell(0, 10, f"Modèle : NeuroScan-V1 | Ingénieur : HOUBAD DOUAA", ln=True, align='C')
+            pdf.cell(0, 10, f"Modele : NeuroScan-V1 | Ingenieur : HOUBAD DOUAA", ln=True, align='C')
             pdf.set_font("Arial", 'I', 9)
-            pdf.multi_cell(0, 5, "AVERTISSEMENT : Travail basé sur l'IA. Veuillez consulter votre médecin.", align='C')
+            pdf.multi_cell(0, 5, "AVERTISSEMENT : Travail base sur l'IA. Veuillez consulter votre medecin.", align='C')
             
             pdf_bytes = pdf.output(dest='S').encode('latin-1')
-            st.download_button("📥 Télécharger le Rapport PDF", pdf_bytes, f"Rapport_{nom}.pdf")
+            st.download_button("📥 Telecharger le Rapport PDF", pdf_bytes, f"Rapport_{nom}.pdf")
 
-# --- 6. FOOTER LINKEDIN ---
+# --- 7. FOOTER LINKEDIN ---
 st.markdown("---")
-st.markdown('<div style="text-align: center;"><a href="https://www.linkedin.com/in/douaa-houbad-006b6a305" target="_blank"><button style="background-color: #0077B5; color: white; border: none; padding: 12px 25px; border-radius: 30px; cursor: pointer; font-weight: bold;">for more information cliquer ici</button></a></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align: center;"><a href="https://www.linkedin.com/in/douaa-houbad-006b6a305" target="_blank"><button style="width:250px; background-color: #0077B5; color: white; border: none; padding: 12px; border-radius: 30px; cursor: pointer; font-weight: bold;">LinkedIn Profile</button></a></div>', unsafe_allow_html=True)
