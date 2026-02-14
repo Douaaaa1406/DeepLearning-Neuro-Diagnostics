@@ -98,11 +98,13 @@ if file is not None and model is not None:
         prediction = model.predict(img_array)[0]
         conf_max = np.max(prediction)
         
-        # --- VÉRIFICATION DE VALIDITÉ (SÉCURITÉ) ---
-        if conf_max < 0.65:
-            st.error("❌ Image Invalide : Le système ne reconnaît pas cette image comme une IRM cérébrale.")
-            st.info("Veuillez entrer une image valide pour obtenir un diagnostic.")
+     # --- SÉCURITÉ RENFORCÉE ---
+        # On monte le seuil à 0.80 pour être certain
+        if conf_max < 0.80: 
+            st.error("❌ Image Invalide ou Diagnostic Incertain")
+            st.info("Le système ne reconnaît pas cette image comme une IRM cérébrale claire. Veuillez charger un scan médical de haute qualité.")
         else:
+            # Affichage du diagnostic normal...
             classes = ['Gliome', 'Méningiome', 'Pas de tumeur', 'Pituitaire']
             res_idx = np.argmax(prediction)
             diag = classes[res_idx]
