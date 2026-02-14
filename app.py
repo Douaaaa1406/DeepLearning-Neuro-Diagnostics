@@ -100,7 +100,7 @@ if file is not None and model is not None:
         
      # --- SÉCURITÉ RENFORCÉE ---
         # On monte le seuil à 0.80 pour être certain
-        if conf_max < 0.80: 
+        if conf_max < 0.85: 
             st.error("❌ Image Invalide ou Diagnostic Incertain")
             st.info("Le système ne reconnaît pas cette image comme une IRM cérébrale claire. Veuillez charger un scan médical de haute qualité.")
         else:
