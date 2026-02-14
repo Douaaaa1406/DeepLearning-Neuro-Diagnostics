@@ -41,24 +41,26 @@ with col_h2:
         </div>
     """, unsafe_allow_html=True)
 
-# --- 3. CHARGEMENT DU MODÈLE ---
+# --- 3. CHARGEMENT DU MODÈLE (AJUSTÉ AVEC NOUVEL ID) ---
 @st.cache_resource
 def load_my_model():
-    model_path = 'brain_tumor_model_final.keras'
-    file_id = '1yYvHXYlkA2NRK4HGD5ANNDW5__mDP-C0'
+    model_path = 'brain_tumor_model_final_v2.keras'
+    # Nouvel ID extrait de votre lien Drive
+    file_id = '1RW2S9NE425t1Q5unEZVswO1-JH9QevPr' 
     url = f'https://drive.google.com/uc?id={file_id}'
     
     if not os.path.exists(model_path):
-        with st.spinner("Initialisation du système expert..."):
+        with st.spinner("Téléchargement du nouveau modèle optimisé..."):
             gdown.download(url, model_path, quiet=False)
     
     try:
+        # Re-construction de l'architecture pour charger les poids du fine-tuning
         base_model = tf.keras.applications.MobileNetV2(input_shape=(224, 224, 3), include_top=False, weights=None)
         model = tf.keras.Sequential([
             base_model,
             tf.keras.layers.GlobalAveragePooling2D(),
-            tf.keras.layers.Dense(128, activation='relu'),
-            tf.keras.layers.Dropout(0.3),
+            tf.keras.layers.Dense(256, activation='relu'), # Ajusté à 256 selon l'entraînement
+            tf.keras.layers.Dropout(0.5), # Ajusté à 0.5 selon l'entraînement
             tf.keras.layers.Dense(4, activation='softmax')
         ])
         model.load_weights(model_path)
@@ -88,11 +90,11 @@ if file is not None and model is not None:
     st.image(img, width=300, caption="Scan IRM prêt pour l'analyse")
     
     if st.button("🧬 GÉNÉRER LE DIAGNOSTIC"):
-        # Étape A: Amélioration du contraste (Aide pour Méningiome/Sain)
+        # Étape A: Amélioration du contraste
         enhancer = ImageEnhance.Contrast(img)
         img_enhanced = enhancer.enhance(1.25)
         
-        # Étape B: Prétraitement
+        # Étape B: Prétraitement (Normalisation 1/255)
         img_resized = img_enhanced.resize((224, 224), Image.LANCZOS)
         img_array = np.array(img_resized).astype('float32') / 255.0
         img_array = np.expand_dims(img_array, axis=0)
@@ -100,7 +102,7 @@ if file is not None and model is not None:
         # Étape C: Prédiction
         prediction = model.predict(img_array)[0]
         
-        # --- ORDRE DES CLASSES INVERSÉ (Correction PC) ---
+        # --- ORDRE DES CLASSES SELON TON PC ---
         classes = ['Pituitaire', 'Pas de tumeur', 'Méningiome', 'Gliome']
         
         res_idx = np.argmax(prediction)
@@ -115,23 +117,22 @@ if file is not None and model is not None:
 
         # Alerte d'incertitude
         if (prediction[1] > 0.30 and prediction[2] > 0.30):
-            st.warning("⚠️ **Alerte :** Confusion possible entre tissu sain et méningiome. Vérification humaine requise.")
+            st.warning("⚠️ **Alerte :** Incertitude détectée entre 'Sain' et 'Méningiome'.")
 
         st.markdown(f"""
             <div style="background-color: white; border-left: 10px solid #1E3A5F; padding: 20px; border-radius: 10px; margin-top:20px;">
                 <h2 style="color: #1E3A5F; margin:0;">Résultat Final : {diag}</h2>
-                <h4 style="color: #4A90E2; margin:0;">Confiance Statistique : {conf:.2f}%</h4>
+                <h4 style="color: #4A90E2; margin:0;">Précision de l'IA : {conf:.2f}%</h4>
             </div>
         """, unsafe_allow_html=True)
         
-        # --- 6. GÉNÉRATION DU RAPPORT PDF (Style Cambria/Times) ---
+        # --- 6. GÉNÉRATION DU RAPPORT PDF ---
         if nom and prenom:
             img.save("temp_report.jpg", "JPEG")
             pdf = FPDF()
             pdf.add_page()
-            font_type = "Times" # Équivalent Serif de Cambria
+            font_type = "Times" 
             
-            # Header bleu
             pdf.set_fill_color(30, 58, 95)
             pdf.rect(0, 0, 210, 40, 'F')
             pdf.set_text_color(255, 255, 255)
@@ -155,13 +156,12 @@ if file is not None and model is not None:
             pdf.set_font(font_type, 'B', 14)
             pdf.cell(0, 15, f" DIAGNOSTIC : {diag.upper()} ({conf:.2f}%)", 1, ln=True, align='C')
             
-            # Footer
             pdf.set_y(-40)
             pdf.set_font(font_type, 'B', 10)
-            pdf.cell(0, 10, f"Modele : NeuroScan-V1 | Ingenieur : HOUBAD DOUAA", ln=True, align='C')
+            pdf.cell(0, 10, f"Modèle : NeuroScan-V2 | Ingénieur : HOUBAD DOUAA", ln=True, align='C')
             pdf.set_font(font_type, 'I', 9)
             pdf.set_text_color(100, 100, 100)
-            pdf.multi_cell(0, 5, "AVERTISSEMENT : Travail base sur l'IA. Veuillez consulter votre medecin.", align='C')
+            pdf.multi_cell(0, 5, "AVERTISSEMENT : Travail basé sur l'IA. Veuillez consulter votre médecin.", align='C')
             
             pdf_bytes = pdf.output(dest='S').encode('latin-1')
             st.download_button("📥 Télécharger le Rapport PDF", pdf_bytes, f"Rapport_{nom}.pdf")
