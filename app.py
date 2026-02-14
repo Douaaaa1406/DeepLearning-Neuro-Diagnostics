@@ -86,28 +86,35 @@ if file is not None and model is not None:
     img = Image.open(file).convert('RGB')
     st.image(img, width=300, caption="Image chargée")
     
-    if st.button("🧬 GÉNÉRER LE DIAGNOSTIC"):
+  if st.button("🧬 GÉNÉRER LE DIAGNOSTIC"):
+        # --- TEST DE VALIDITÉ VISUELLE ---
+        # 1. Vérification de la saturation (une IRM est grise, pas colorée)
+        img_hsv = img.convert('HSV')
+        stat_hsv = np.array(img_hsv)
+        saturation_moyenne = np.mean(stat_hsv[:,:,1]) # Canal S (Saturation)
+        
         # Prétraitement
-        enhancer = ImageEnhance.Contrast(img)
-        img_enhanced = enhancer.enhance(1.1)
-        img_resized = img_enhanced.resize((224, 224), Image.LANCZOS)
+        img_resized = img.resize((224, 224), Image.LANCZOS)
         img_array = np.array(img_resized).astype('float32') / 255.0
         img_array = np.expand_dims(img_array, axis=0)
         
         # Prédiction
         prediction = model.predict(img_array)[0]
         conf_max = np.max(prediction)
-        
-     # --- SÉCURITÉ RENFORCÉE ---
-        # On monte le seuil à 0.80 pour être certain
-        if conf_max < 0.85: 
-            st.error("❌ Image Invalide ou Diagnostic Incertain")
-            st.info("Le système ne reconnaît pas cette image comme une IRM cérébrale claire. Veuillez charger un scan médical de haute qualité.")
+
+        # --- CONDITION DE REJET ---
+        # Si c'est trop coloré (saturation > 40) ou si l'image est trop différente
+        if saturation_moyenne > 40:
+            st.error("❌ Image Non Conforme : Ceci ressemble à une image colorée (fleur, feuille, etc.).")
+            st.info("Le système n'accepte que des images IRM en niveaux de gris.")
+        elif conf_max < 0.85:
+            st.error("❌ Diagnostic Incertain : L'image n'est pas reconnue comme une IRM cérébrale valide.")
         else:
-            # Affichage du diagnostic normal...
+            # Procéder au diagnostic normal
             classes = ['Gliome', 'Méningiome', 'Pas de tumeur', 'Pituitaire']
             res_idx = np.argmax(prediction)
             diag = classes[res_idx]
+            # ... (suite du code d'affichage et PDF)
             conf = conf_max * 100
             
             # Affichage Probabilités
