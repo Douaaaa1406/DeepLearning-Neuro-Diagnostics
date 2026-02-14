@@ -10,7 +10,6 @@ import gdown
 # --- 1. CONFIGURATION DE LA PAGE ---
 st.set_page_config(page_title="NeuroScan AI | Houbad Douaa", page_icon="🧠", layout="wide")
 
-# Style CSS
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] > .main {
@@ -26,7 +25,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. EN-TÊTE AVEC HORLOGE ---
+# --- 2. EN-TÊTE ---
 col_h1, col_h2 = st.columns([2, 1])
 with col_h1:
     st.markdown('<p class="main-title">HOUBAD DOUAA</p>', unsafe_allow_html=True)
@@ -41,7 +40,7 @@ with col_h2:
         </div>
     """, unsafe_allow_html=True)
 
-# --- 3. CHARGEMENT DU MODÈLE (NOUVEL ID + ARCHITECTURE RÉGLÉE) ---
+# --- 3. CHARGEMENT DU MODÈLE ---
 @st.cache_resource
 def load_my_model():
     model_path = 'brain_tumor_model_final_v2.keras'
@@ -49,7 +48,7 @@ def load_my_model():
     url = f'https://drive.google.com/uc?id={file_id}'
     
     if not os.path.exists(model_path):
-        with st.spinner("Téléchargement du modèle haute précision..."):
+        with st.spinner("Téléchargement du modèle..."):
             gdown.download(url, model_path, quiet=False)
     
     try:
@@ -64,12 +63,12 @@ def load_my_model():
         model.load_weights(model_path)
         return model
     except Exception as e:
-        st.error(f"Erreur de chargement : {e}")
+        st.error(f"Erreur : {e}")
         return None
 
 model = load_my_model()
 
-# --- 4. FORMULAIRE PATIENT ---
+# --- 4. INTERFACE ---
 st.markdown("---")
 col_p1, col_p2 = st.columns(2)
 with col_p1:
@@ -80,104 +79,91 @@ with col_p1:
 
 with col_p2:
     st.subheader("🔬 Image IRM")
-    file = st.file_uploader("Charger le scan (JPG, PNG)", type=["jpg", "jpeg", "png"])
+    file = st.file_uploader("Charger le scan", type=["jpg", "jpeg", "png"])
 
-# --- 5. ANALYSE ET DIAGNOSTIC ---
+# --- 5. LOGIQUE DE DIAGNOSTIC ---
 if file is not None and model is not None:
     img = Image.open(file).convert('RGB')
-    st.image(img, width=300, caption="Scan IRM prêt")
+    st.image(img, width=300, caption="Image chargée")
     
     if st.button("🧬 GÉNÉRER LE DIAGNOSTIC"):
-        # Étape A: Contraste modéré (1.1 pour ne pas effacer les Gliomes infiltrants)
+        # Prétraitement
         enhancer = ImageEnhance.Contrast(img)
         img_enhanced = enhancer.enhance(1.1)
-        
-        # Étape B: Prétraitement
         img_resized = img_enhanced.resize((224, 224), Image.LANCZOS)
         img_array = np.array(img_resized).astype('float32') / 255.0
         img_array = np.expand_dims(img_array, axis=0)
         
-      prediction = model.predict(img_array)[0]
+        # Prédiction
+        prediction = model.predict(img_array)[0]
+        conf_max = np.max(prediction)
         
-        # --- NOUVEAU : VÉRIFICATION DE VALIDITÉ ---
-        # Si la probabilité maximale est trop faible (ex: < 60%), 
-        # ou si l'image est trop "plate" (incertitude totale), on rejette.
-        confiance_max = np.max(prediction)
-        
-        if confiance_max < 0.65: # Seuil de sécurité à 65%
-            st.error("❌ Image Invalide : Le système ne reconnaît pas cette image comme une IRM cérébrale valide.")
-            st.info("Veuillez charger une coupe axiale d'IRM cérébrale de bonne qualité.")
+        # --- VÉRIFICATION DE VALIDITÉ (SÉCURITÉ) ---
+        if conf_max < 0.65:
+            st.error("❌ Image Invalide : Le système ne reconnaît pas cette image comme une IRM cérébrale.")
+            st.info("Veuillez entrer une image valide pour obtenir un diagnostic.")
         else:
-        
-        # --- CHANGEMENT CRUCIAL : ORDRE ALPHABÉTIQUE STANDARD ---
-        # Si Gliome échouait, c'est parce que l'IA attend cet ordre :
-        classes = ['Gliome', 'Méningiome', 'Pas de tumeur', 'Pituitaire']
-        
-        res_idx = np.argmax(prediction)
-        diag = classes[res_idx]
-        conf = prediction[res_idx] * 100
-        
-        # Affichage
-        st.write("### 📊 Analyse des probabilités :")
-        cols = st.columns(4)
-        for i in range(4):
-            cols[i].metric(classes[i], f"{prediction[i]*100:.1f}%")
+            classes = ['Gliome', 'Méningiome', 'Pas de tumeur', 'Pituitaire']
+            res_idx = np.argmax(prediction)
+            diag = classes[res_idx]
+            conf = conf_max * 100
+            
+            # Affichage Probabilités
+            st.write("### 📊 Analyse des probabilités :")
+            cols = st.columns(4)
+            for i in range(4):
+                cols[i].metric(classes[i], f"{prediction[i]*100:.1f}%")
 
-        st.markdown(f"""
-            <div style="background-color: white; border-left: 10px solid #1E3A5F; padding: 20px; border-radius: 10px; margin-top:20px;">
-                <h2 style="color: #1E3A5F; margin:0;">Résultat Final : {diag}</h2>
-                <h4 style="color: #4A90E2; margin:0;">Fiabilité : {conf:.2f}%</h4>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        # --- 6. RAPPORT PDF ---
-        if nom and prenom:
-            img.save("temp_report.jpg", "JPEG")
-            pdf = FPDF()
-            pdf.add_page()
-            font_type = "Times" 
+            st.markdown(f"""
+                <div style="background-color: white; border-left: 10px solid #1E3A5F; padding: 20px; border-radius: 10px; margin-top:20px;">
+                    <h2 style="color: #1E3A5F; margin:0;">Résultat Final : {diag}</h2>
+                    <h4 style="color: #4A90E2; margin:0;">Fiabilité : {conf:.2f}%</h4>
+                </div>
+            """, unsafe_allow_html=True)
             
-            pdf.set_fill_color(30, 58, 95)
-            pdf.rect(0, 0, 210, 40, 'F')
-            pdf.set_text_color(255, 255, 255)
-            pdf.set_font(font_type, 'B', 18)
-            pdf.cell(0, 20, "RAPPORT MEDICAL NEUROSCAN AI", ln=True, align='C')
-            
-            pdf.ln(25)
-            pdf.set_text_color(0, 0, 0)
-            pdf.set_font(font_type, 'B', 12)
-            pdf.cell(0, 10, " 1. INFORMATIONS DU PATIENT", 1, ln=True)
-            pdf.set_font(font_type, '', 11)
-            pdf.cell(95, 10, f" Nom : {nom.upper()}", 1)
-            pdf.cell(95, 10, f" Prenom : {prenom.capitalize()}", 1, ln=True)
-            
-            pdf.ln(10)
-            pdf.image("temp_report.jpg", x=60, w=90)
-            pdf.set_y(pdf.get_y() + 95)
-            
-            pdf.set_font(font_type, 'B', 12)
-            pdf.cell(0, 10, " 2. RESULTATS DU MODELE", 1, ln=True)
-            pdf.set_font(font_type, 'B', 14)
-            pdf.cell(0, 15, f" DIAGNOSTIC : {diag.upper()} ({conf:.2f}%)", 1, ln=True, align='C')
-            
-            pdf.set_y(-40)
-            pdf.set_font(font_type, 'B', 10)
-            pdf.cell(0, 10, f"Modèle : NeuroScan-V2 | Ingénieur : HOUBAD DOUAA", ln=True, align='C')
-            pdf.set_font(font_type, 'I', 9)
-            pdf.set_text_color(100, 100, 100)
-            pdf.multi_cell(0, 5, "AVERTISSEMENT : Travail basé sur l'IA. Veuillez consulter votre médecin.", align='C')
-            
-            pdf_bytes = pdf.output(dest='S').encode('latin-1')
-            st.download_button("📥 Télécharger le Rapport PDF", pdf_bytes, f"Rapport_{nom}.pdf")
+            # --- RAPPORT PDF ---
+            if nom and prenom:
+                img.save("temp_report.jpg", "JPEG")
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_fill_color(30, 58, 95)
+                pdf.rect(0, 0, 210, 40, 'F')
+                pdf.set_text_color(255, 255, 255)
+                pdf.set_font("Times", 'B', 18)
+                pdf.cell(0, 20, "RAPPORT MEDICAL NEUROSCAN AI", ln=True, align='C')
+                
+                pdf.ln(25)
+                pdf.set_text_color(0, 0, 0)
+                pdf.set_font("Times", 'B', 12)
+                pdf.cell(0, 10, " 1. INFORMATIONS DU PATIENT", 1, ln=True)
+                pdf.set_font("Times", '', 11)
+                pdf.cell(95, 10, f" Nom : {nom.upper()}", 1)
+                pdf.cell(95, 10, f" Prenom : {prenom.capitalize()}", 1, ln=True)
+                
+                pdf.ln(10)
+                pdf.image("temp_report.jpg", x=60, w=90)
+                pdf.set_y(pdf.get_y() + 95)
+                
+                pdf.set_font("Times", 'B', 12)
+                pdf.cell(0, 10, " 2. RESULTATS DU MODELE", 1, ln=True)
+                pdf.set_font("Times", 'B', 14)
+                pdf.cell(0, 15, f" DIAGNOSTIC : {diag.upper()} ({conf:.2f}%)", 1, ln=True, align='C')
+                
+                pdf.set_y(-40)
+                pdf.set_font("Times", 'B', 10)
+                pdf.cell(0, 10, f"Modèle : NeuroScan-V2 | Ingénieur : HOUBAD DOUAA", ln=True, align='C')
+                
+                pdf_bytes = pdf.output(dest='S').encode('latin-1')
+                st.download_button("📥 Télécharger le Rapport", pdf_bytes, f"Rapport_{nom}.pdf")
 
-# --- 7. FOOTER LINKEDIN ---
+# --- 6. FOOTER ---
 st.markdown("---")
 st.markdown(f"""
     <div style="text-align: center;">
-        <p style="color: #555;">Développement et Algorithmes par Houbad Douaa</p>
+        <p>Développement par Houbad Douaa</p>
         <a href="https://www.linkedin.com/in/douaa-houbad-006b6a305" target="_blank">
-            <button style="background-color: #0077B5; color: white; border: none; padding: 12px 25px; border-radius: 30px; cursor: pointer; font-weight: bold;">
-                for more information cliquer ici
+            <button style="background-color: #0077B5; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer;">
+                En savoir plus sur LinkedIn
             </button>
         </a>
     </div>
